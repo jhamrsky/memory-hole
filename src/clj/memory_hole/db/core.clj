@@ -174,21 +174,6 @@
     (dissoc-tags-from-issue! m)
     (delete-issue! m)))
 
-(defn update-user-info! [{:keys [screenname pass admin is-active] :as user}]
-  (conman/with-transaction [*db*]
-    (merge
-      user
-      (if-let [{:keys [user-id]} (user-by-screenname {:screenname screenname})]
-        (update-user<! {:user-id    user-id
-                        :admin      admin
-                        :is-active  is-active
-                        :screenname screenname
-                        :pass       pass})
-        (insert-user<! {:screenname screenname
-                        :admin      admin
-                        :is-active  is-active
-                        :pass       pass})))))
-
 (defn insert-user-with-belongs-to!
   "inserts a user and adds them to specified groups in a transaction."
   [{:keys [screenname pass admin is-active belongs-to] :as user}]
