@@ -8,7 +8,8 @@
    [cuerdas.core :as string]
    [mount.core :refer [defstate]]
    [memory-hole.config :refer [env]]
-   [buddy.hashers :as hashers])
+   [buddy.hashers :as hashers]
+   [clojure.tools.logging :as log])
   (:import org.postgresql.util.PGobject
            java.sql.Array
            clojure.lang.IPersistentMap
@@ -51,10 +52,27 @@
   (letfn [(transform [[k v]] [(t k) v])]
     (postwalk (fn [x] (if (map? x) (into {} (map transform x)) x)) coll)))
 
+(defn unified-map-returning [x]
+  (if (map? x) x (first x)))
+
+(defn unified-handling-single [this result options]
+  (case (:command options)
+    :i!                (unified-map-returning result)
+    :insert            (unified-map-returning result)
+    :<!                (hugsql.adapter/result-one this result options)
+    :returning-execute (hugsql.adapter/result-one this result options)
+    :!                 (hugsql.adapter/result-one this result options)
+    :execute           (hugsql.adapter/result-one this result options)
+    :?                 (hugsql.adapter/result-one this result options)
+    :query             (hugsql.adapter/result-one this result options)))
+
 (defn result-one-snake->kebab
   [this result options]
-  (->> (hugsql.adapter/result-one this result options)
-       (transform-keys ->kebab-case-keyword)))
+  (do
+    (log/info (str "Type : " options))
+    (log/info (str "Result : " result))
+    (->> (unified-handling-single this result options)
+         (transform-keys ->kebab-case-keyword*))))
 
 (defn result-many-snake->kebab
   [this result options]
@@ -125,19 +143,31 @@
   IPersistentVector
   (sql-value [value] (to-pg-json value)))
 
+;; TODO: add database handling type, so eventually multiple DBs could be used (except those which are not compatible with the SQL part)
+(defn with-returning
+  "Mimicks RETURNING statement by mapping id-name to .getReturnedKeys and merging it to m."
+  [f m id-name]
+  (let [id-keyword (keyword id-name)
+        result (f m)]
+    (if (contains? result id-keyword)
+      result
+      (->> {id-keyword ((keyword "scope_identity()") result)}
+           (merge m)))))
+
 (defn support-issue [m]
   (conman/with-transaction [*db*]
     (when-let [issue (not-empty (support-issue* m))]
       (-> issue
           (update :tags distinct)
           (update :files distinct)
-          (merge (inc-issue-views<! m))))))
+          (merge {:views (inc-issue-views! m)})
+          (merge (get-views-count m))))))
 
 (defn create-missing-tags [issue-tags]
   (let [current-tags (map :tag (tags))]
     (doseq [tag (difference (set issue-tags)
                             (set current-tags))]
-      (create-tag<! {:tag tag}))))
+      (with-returning create-tag<! {:tag tag} :tag-id))))
 
 (defn reset-issue-tags! [user-id support-issue-id tags]
   (create-missing-tags tags)
@@ -158,7 +188,7 @@
   (conman/with-transaction [*db*]
     (when (user-can-access-group (select-keys issue [:user-id :group-id]))
       (let [support-issue-id (:support-issue-id
-                              (add-issue<! (dissoc issue :tags)))]
+                              (with-returning add-issue<! (dissoc issue :tags) :support-issue-id))]
         (reset-issue-tags! user-id support-issue-id tags)
         support-issue-id))))
 
@@ -179,10 +209,13 @@
   [{:keys [screenname pass admin is-active belongs-to] :as user}]
   (conman/with-transaction [*db*]
     (let [{:keys [user-id]}
-          (insert-user<! {:screenname screenname
-                          :admin admin
-                          :is-active is-active
-                          :pass pass})]
+          (with-returning
+            insert-user<!
+            {:screenname screenname
+             :admin admin
+             :is-active is-active
+             :pass pass}
+            :user-id)]
       (add-user-to-groups! {:user-id user-id
                             :groups belongs-to})
       (user-by-screenname {:screenname screenname}))))
