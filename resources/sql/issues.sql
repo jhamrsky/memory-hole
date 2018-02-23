@@ -205,6 +205,7 @@ SELECT
   array_agg(t.tag) as tags,
   si.views
 FROM support_issues si
+  /*~ (if (= :postgresql (:db-type params)) */
   INNER JOIN (SELECT DISTINCT
                 support_issue_id,
                 ts_rank_cd(search_vector, to_tsquery(:query)) AS rank
@@ -213,6 +214,11 @@ FROM support_issues si
               ORDER BY rank DESC
               OFFSET :offset
               LIMIT :limit) x ON x.support_issue_id = si.support_issue_id
+  /*~*/
+  INNER JOIN (SELECT DISTINCT sit.support_issue_id
+              FROM support_issues sit, FT_SEARCH_DATA(:query, :limit, :offset) FT
+              WHERE FT.TABLE='SUPPORT_ISSUES' AND sit.support_issue_id = FT.KEYS[0]) x ON x.support_issue_id = si.support_issue_id
+  /*~) ~*/
     LEFT JOIN groups g ON g.group_id = si.group_id
     LEFT JOIN support_issues_tags sit ON si.support_issue_id = sit.support_issue_id
     LEFT JOIN tags t ON sit.tag_id = t.tag_id

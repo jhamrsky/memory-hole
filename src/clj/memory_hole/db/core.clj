@@ -11,13 +11,22 @@
    [buddy.hashers :as hashers]
    [clojure.tools.logging :as log])
   (:import org.postgresql.util.PGobject
+           org.h2.jdbc.JdbcClob
            java.sql.Array
+           java.util.LinkedList
            clojure.lang.IPersistentMap
            clojure.lang.IPersistentVector
            [java.sql
             Date
             Timestamp
             PreparedStatement]))
+
+(defstate ^:dynamic *db-type*
+  :start (->> (:database-url env)
+              (re-find #"jdbc:([^.]+?):.+")
+              second
+              keyword)
+  :stop nil)
 
 (defstate ^:dynamic *db*
   :start (conman/connect! {:jdbc-url (env :database-url)})
@@ -68,11 +77,8 @@
 
 (defn result-one-snake->kebab
   [this result options]
-  (do
-    (log/info (str "Type : " options))
-    (log/info (str "Result : " result))
-    (->> (unified-handling-single this result options)
-         (transform-keys ->kebab-case-keyword*))))
+  (->> (unified-handling-single this result options)
+       (transform-keys ->kebab-case-keyword*)))
 
 (defn result-many-snake->kebab
   [this result options]
@@ -113,9 +119,17 @@
          (remove nil?)
          (vec)))
 
+  LinkedList
+  (result-set-read-column [v _ _]
+    (vec v))
+
   PGobject
   (result-set-read-column [pgobj _metadata _index]
-    (deserialize pgobj)))
+    (deserialize pgobj))
+
+  JdbcClob
+  (result-set-read-column [h2obj _metadata _index]
+    (.getSubString h2obj 1 (.length h2obj))))
 
 (extend-type java.util.Date
   jdbc/ISQLParameter
@@ -143,7 +157,11 @@
   IPersistentVector
   (sql-value [value] (to-pg-json value)))
 
-;; TODO: add database handling type, so eventually multiple DBs could be used (except those which are not compatible with the SQL part)
+(defn- retrieve-id [x]
+  (case *db-type*
+    :postgresql x
+    :h2         ((keyword "scope-identity()") x)))
+
 (defn with-returning
   "Mimicks RETURNING statement by mapping id-name to .getReturnedKeys and merging it to m."
   [f m id-name]
@@ -151,7 +169,7 @@
         result (f m)]
     (if (contains? result id-keyword)
       result
-      (->> {id-keyword ((keyword "scope_identity()") result)}
+      (->> {id-keyword (retrieve-id result)}
            (merge m)))))
 
 (defn support-issue [m]
@@ -214,6 +232,7 @@
             {:screenname screenname
              :admin admin
              :is-active is-active
+             :db-type *db-type*
              :pass pass}
             :user-id)]
       (add-user-to-groups! {:user-id user-id
@@ -243,11 +262,13 @@
                                                      :pass
                                                      :admin
                                                      :is-active
-                                                     :user-id])))
+                                                     :user-id])
+                                       (merge {:db-type *db-type*})))
           (update-user<! {:user-id    user-id
                           :admin      admin
                           :is-active  is-active
-                          :screenname screenname})))
+                          :screenname screenname
+                          :db-type *db-type*})))
       (when-not (empty? del-groups)
         (remove-user-from-groups! {:user-id user-id
                                    :groups del-groups}))

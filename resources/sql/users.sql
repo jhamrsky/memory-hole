@@ -1,7 +1,11 @@
 -- :name insert-user<! :i! :1
 -- :doc add a user
 insert into users (screenname, admin, last_login, is_active, pass)
-     values (:screenname, :admin, (select now() at time zone 'utc'), :is-active, :pass);
+     values (:screenname,
+     :admin,
+     --~ (if (= :postgresql (:db-type params)) "(now() at time zone 'utc')," "now(),")
+     :is-active,
+     :pass);
 
 -- :name user-by-screenname :? :1
 -- :doc get a user based on the screenname
@@ -37,7 +41,7 @@ set screenname = :screenname,
     pass = :pass,
     admin = :admin,
     is_active = :is-active,
-    last_login=(select now() at time zone 'utc')
+    last_login=--~ (if (= :postgresql (:db-type params)) "(now() at time zone 'utc')" "now()")
 where user_id=:user-id;
 
 -- :name update-user<! :! :1
@@ -46,5 +50,5 @@ update users
 set screenname = :screenname,
     admin = :admin,
     is_active = :is-active,
-    last_login=(select now() at time zone 'utc')
+    last_login=--~ (if (= :postgresql (:db-type params)) "(now() at time zone 'utc')" "now()")
 where user_id=:user-id;
