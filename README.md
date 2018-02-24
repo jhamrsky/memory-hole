@@ -83,6 +83,8 @@ Create a `profiles.clj` file in the project directory with the configuration set
 ```clojure
 {:profiles/dev
  {:env
+  ;; set migratus dir (and :migrations-dir) when developing with H2
+  ;; :migratus {:migration-dir "migrations/h2"}
   {:database-url "jdbc:postgresql://localhost/postgres?user=memoryhole&password=memoryhole"
   ;;ldap is optional, will use internal table otherwise
   ;;Admin users (able to manage groups) defined by their sAMAccountName
@@ -127,6 +129,14 @@ The `conf.edn` file should contain the configuration such as the database URL th
 
 ```clojure
 :database-url "jdbc:postgresql://localhost/postgres?user=memoryhole&password=memoryhole"
+```
+
+### Migration directory
+
+Depending on selected DB backend, migration directory needs to be set, eg.
+
+```clojure
+:migration-dir "migrations/postgresql"
 ```
 
 ### HTTP Port

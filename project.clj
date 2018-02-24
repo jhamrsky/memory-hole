@@ -52,7 +52,9 @@
   :resource-paths ["resources" "target/cljsbuild"]
   :target-path "target/%s/"
   :main ^:skip-aot memory-hole.core
-  :migratus {:store :database :db ~(get (System/getenv) "DATABASE_URL")}
+  :migratus {:store :database
+             :db ~(get (System/getenv) "DATABASE_URL")
+             :migration-dir "migrations/postgresql"}
 
   :plugins [[lein-cprop "1.0.1"]
             [migratus-lein "0.4.1"]
