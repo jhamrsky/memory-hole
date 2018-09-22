@@ -48,11 +48,11 @@
     [markdown-preview text]]])
 
 (defn edit-panel [text]
-  (let [test (subscribe [:issue-hints])]
+  (let [hints (subscribe [:issue-hints])]
     [box
      :class "issue-detail"
      :size "auto"
-     :child [:div.issue-detail [editor text test]]]))
+     :child [:div.issue-detail [editor text hints]]]))
 
 (defn select-issue-keys [issue]
   (let [issue-keys [:title :tags :summary :detail]]

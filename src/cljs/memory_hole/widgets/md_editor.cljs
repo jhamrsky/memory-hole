@@ -1,6 +1,6 @@
 (ns memory-hole.widgets.md-editor
   (:require [reagent.core :as r]
-            [re-frame.core :refer [dispatch]]))
+            [re-frame.core :refer [dispatch subscribe]]))
 
 (def ^{:private true} hint-limit 10)
 
@@ -154,4 +154,7 @@
          (-> editor .-codemirror (.on "startCompletion" (fn [] (reset! hints-shown true))))
          (-> editor .-codemirror (.on "endCompletion" (fn [] (reset! hints-shown false))))))
     :reagent-render
-    (fn [this] [:textarea])}))
+    (fn [text issue-hints]
+      (do
+        @issue-hints ;; dereference hints, so add-watch is not optimized out
+        [:textarea]))}))
